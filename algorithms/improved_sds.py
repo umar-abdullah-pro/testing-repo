@@ -263,7 +263,7 @@ def run_improved_sds(
             break
 
         # Stop if shaping increments are negligible.
-        if max_increment < 0.01:
+        if max_increment < 0.0001:
             print("Shaping increments are too small. Stopping.")
             break
 

@@ -5,7 +5,7 @@ def classify_blocks(
     vertical_slack,
     hard_blocks=None,
     tolerance=1e-9,
-    debug=True,
+    debug=False,
 ):
     """
     Classify blocks into seven SDS subsets.

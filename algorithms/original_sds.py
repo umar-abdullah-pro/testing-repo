@@ -122,7 +122,7 @@ def run_original_sds(
             list(h_increments.values()) + list(v_increments.values())
         )
 
-        if max(all_increments, default=0.0) < 0.01:
+        if max(all_increments, default=0.0) < 0.0001:
             print("SDS stopped: shaping increments are too small.")
             break
 
