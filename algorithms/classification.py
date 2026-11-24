@@ -8,17 +8,15 @@ def classify_blocks(
     debug=False,
 ):
     """
-    Classify blocks into seven SDS subsets.
+    Classify blocks into the seven SDS subsets.
 
-    Subset I   : Hard blocks
-    Subset II  : Both horizontal and vertical slack non-zero
-    Subset III : Both horizontal and vertical slack zero
-    Subset IV  : Horizontal slack only, width below maximum
-    Subset V   : Horizontal slack only, width at maximum
-    Subset VI  : Vertical slack only, height below maximum
-    Subset VII : Vertical slack only, height at maximum
-
-    Debug output helps identify why Subset VI may be empty.
+    I   : Hard blocks
+    II  : Both horizontal and vertical slack non-zero
+    III : Both horizontal and vertical slack zero
+    IV  : Horizontal slack only, width below effective maximum
+    V   : Horizontal slack only, width at effective maximum
+    VI  : Vertical slack only, height below effective maximum
+    VII : Vertical slack only, height at effective maximum
     """
 
     if hard_blocks is None:
@@ -37,7 +35,6 @@ def classify_blocks(
         "VII": [],
     }
 
-    # Validate slack dictionaries
     for name in blocks:
         if name not in horizontal_slack:
             raise KeyError(
@@ -52,91 +49,68 @@ def classify_blocks(
     diagnostic_rows = []
 
     for name, block in blocks.items():
-
         hs = float(horizontal_slack[name])
         vs = float(vertical_slack[name])
 
         if hs < -tolerance or vs < -tolerance:
             raise ValueError(
-                f"Negative slack detected for {name}: "
-                f"H={hs}, V={vs}"
+                f"Negative slack detected for {name}: H={hs}, V={vs}"
             )
 
-        # Subset I: Hard blocks
         if name in hard_blocks:
             subsets["I"].append(name)
-
-            diagnostic_rows.append({
-                "name": name,
-                "hs": hs,
-                "vs": vs,
-                "width": block.width,
-                "max_width": block.max_width,
-                "height": block.height,
-                "max_height": block.max_height,
-                "subset": "I",
-            })
-            continue
-
-        # Slack conditions
-        horizontal_nonzero = hs > tolerance
-        vertical_nonzero = vs > tolerance
-
-        # Dimension limit conditions
-        width_at_max = (
-            block.max_width - block.width
-        ) <= tolerance * max(
-            1.0, abs(block.max_width)
-        )
-
-        height_at_max = (
-            block.max_height - block.height
-        ) <= tolerance * max(
-            1.0, abs(block.max_height)
-        )
-
-        # Subset II: Both slacks non-zero
-        if horizontal_nonzero and vertical_nonzero:
-            subsets["II"].append(name)
-            subset = "II"
-
-        # Subset III: Both slacks zero
-        elif not horizontal_nonzero and not vertical_nonzero:
-            subsets["III"].append(name)
-            subset = "III"
-
-        # Subset IV / V: Horizontal slack only
-        elif horizontal_nonzero and not vertical_nonzero:
-
-            if not width_at_max:
-                subsets["IV"].append(name)
-                subset = "IV"
-            else:
-                subsets["V"].append(name)
-                subset = "V"
-
-        # Subset VI / VII: Vertical slack only
+            subset = "I"
         else:
+            horizontal_nonzero = hs > tolerance
+            vertical_nonzero = vs > tolerance
 
-            if not height_at_max:
-                subsets["VI"].append(name)
-                subset = "VI"
+            width_at_max = (
+                block.effective_max_width - block.width
+            ) <= tolerance * max(
+                1.0, abs(block.effective_max_width)
+            )
+
+            height_at_max = (
+                block.effective_max_height - block.height
+            ) <= tolerance * max(
+                1.0, abs(block.effective_max_height)
+            )
+
+            if horizontal_nonzero and vertical_nonzero:
+                subsets["II"].append(name)
+                subset = "II"
+
+            elif not horizontal_nonzero and not vertical_nonzero:
+                subsets["III"].append(name)
+                subset = "III"
+
+            elif horizontal_nonzero:
+                if not width_at_max:
+                    subsets["IV"].append(name)
+                    subset = "IV"
+                else:
+                    subsets["V"].append(name)
+                    subset = "V"
+
             else:
-                subsets["VII"].append(name)
-                subset = "VII"
+                if not height_at_max:
+                    subsets["VI"].append(name)
+                    subset = "VI"
+                else:
+                    subsets["VII"].append(name)
+                    subset = "VII"
 
         diagnostic_rows.append({
             "name": name,
             "hs": hs,
             "vs": vs,
             "width": block.width,
-            "max_width": block.max_width,
+            "max_width": block.effective_max_width,
             "height": block.height,
-            "max_height": block.max_height,
+            "max_height": block.effective_max_height,
             "subset": subset,
         })
 
-    # Detailed diagnostic output
     if debug:
         print("\n========== SLACK CLASSIFICATION DIAGNOSTIC ==========")
 
@@ -145,13 +119,13 @@ def classify_blocks(
             f"{'H Slack':>12}"
             f"{'V Slack':>12}"
             f"{'Width':>12}"
-            f"{'Max W':>12}"
+            f"{'Eff Max W':>12}"
             f"{'Height':>12}"
-            f"{'Max H':>12}"
+            f"{'Eff Max H':>12}"
             f"{'Subset':>10}"
         )
 
-        print("-" * 90)
+        print("-" * 94)
 
         for row in diagnostic_rows:
             print(
@@ -165,7 +139,7 @@ def classify_blocks(
                 f"{row['subset']:>10}"
             )
 
-        print("-" * 90)
+        print("-" * 94)
 
         print(
             "Subset counts: "
@@ -176,19 +150,12 @@ def classify_blocks(
         )
 
         print(
-            f"Vertical-only blocks (Subset VI + VII): "
+            "Vertical-only blocks (VI + VII): "
             f"{len(subsets['VI']) + len(subsets['VII'])}"
         )
 
-        print(
-            f"Subset VI shaping candidates: "
-            f"{subsets['VI']}"
-        )
-
-        print(
-            f"Subset VII blocks at maximum height: "
-            f"{subsets['VII']}"
-        )
+        print(f"Subset VI shaping candidates: {subsets['VI']}")
+        print(f"Subset VII blocks: {subsets['VII']}")
 
         print("=====================================================\n")
 

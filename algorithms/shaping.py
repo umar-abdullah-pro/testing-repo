@@ -1,3 +1,4 @@
+
 import math
 
 
@@ -6,10 +7,10 @@ def apply_shaping(blocks, horizontal_increments, vertical_increments):
     Apply calculated shaping increments to blocks.
 
     Horizontal shaping:
-        Increase block width while preserving area.
+        Increase width while preserving area.
 
     Vertical shaping:
-        Increase block height while preserving area.
+        Increase height while preserving area.
     """
 
     # Apply horizontal shaping first.
@@ -19,11 +20,16 @@ def apply_shaping(blocks, horizontal_increments, vertical_increments):
             raise ValueError(f"Unknown block: {name}")
 
         if not math.isfinite(delta) or delta < 0:
-            raise ValueError("Shaping increment must be finite and non-negative.")
+            raise ValueError(
+                "Shaping increment must be finite and non-negative."
+            )
 
         block = blocks[name]
 
-        new_width = min(block.width + delta, block.max_width)
+        new_width = min(
+            block.width + delta,
+            block.effective_max_width
+        )
 
         block.set_width(new_width)
 
@@ -34,24 +40,28 @@ def apply_shaping(blocks, horizontal_increments, vertical_increments):
             raise ValueError(f"Unknown block: {name}")
 
         if not math.isfinite(delta) or delta < 0:
-            raise ValueError("Shaping increment must be finite and non-negative.")
+            raise ValueError(
+                "Shaping increment must be finite and non-negative."
+            )
 
         block = blocks[name]
 
-        new_height = min(block.height + delta, block.max_height)
+        new_height = min(
+            block.height + delta,
+            block.effective_max_height
+        )
 
         new_width = block.area / new_height
 
-        if new_width < block.min_width - 1e-9:
+        if (
+            new_width < block.effective_min_width - 1e-9
+            or new_width > block.effective_max_width + 1e-9
+        ):
             raise ValueError(
-                f"Vertical shaping violates min_width for {name}: "
-                f"{new_width} < {block.min_width}"
-            )
-
-        if new_width > block.max_width + 1e-9:
-            raise ValueError(
-                f"Vertical shaping violates max_width for {name}: "
-                f"{new_width} > {block.max_width}"
+                f"Vertical shaping violates effective width bounds "
+                f"for {name}: width={new_width:.8f}, "
+                f"allowed=[{block.effective_min_width:.8f}, "
+                f"{block.effective_max_width:.8f}]"
             )
 
         block.set_width(new_width)

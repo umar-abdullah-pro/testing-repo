@@ -1,19 +1,27 @@
+
 def calculate_path_capacity(graph, blocks, axis):
     """
     Calculate maximum remaining shaping capacity on a
     SOURCE-to-SINK path passing through each block.
     """
 
-    if axis not in ("horizontal", "vertical"):
-        raise ValueError("Axis must be 'horizontal' or 'vertical'.")
-
     room = {}
 
     for name, block in blocks.items():
         if axis == "horizontal":
-            room[name] = max(0.0, block.max_width - block.width)
+            max_dimension = getattr(
+                block, "effective_max_width", block.max_width
+            )
+            room[name] = max(0.0, max_dimension - block.width)
+
+        elif axis == "vertical":
+            max_dimension = getattr(
+                block, "effective_max_height", block.max_height
+            )
+            room[name] = max(0.0, max_dimension - block.height)
+
         else:
-            room[name] = max(0.0, block.max_height - block.height)
+            raise ValueError("Axis must be 'horizontal' or 'vertical'.")
 
     room["SOURCE"] = 0.0
     room["SINK"] = 0.0
@@ -24,92 +32,83 @@ def calculate_path_capacity(graph, blocks, axis):
     forward["SOURCE"] = 0.0
 
     for u in order:
-        if forward[u] == float("-inf"):
-            continue
-
         for v in graph.adj[u]:
-            candidate = forward[u] + room[v]
+            candidate = forward[u] + room.get(v, 0.0)
             forward[v] = max(forward[v], candidate)
 
     backward = {node: float("-inf") for node in graph.weights}
     backward["SINK"] = 0.0
 
     for u in reversed(order):
-        if u == "SINK":
-            continue
-
         for v in graph.adj[u]:
-            if backward[v] == float("-inf"):
-                continue
-
-            candidate = room[v] + backward[v]
+            candidate = room.get(v, 0.0) + backward[v]
             backward[u] = max(backward[u], candidate)
 
     path_capacity = {}
 
     for name in blocks:
-        if forward[name] == float("-inf") or backward[name] == float("-inf"):
-            path_capacity[name] = 0.0
-        else:
-            path_capacity[name] = forward[name] + backward[name]
+        # forward[name] already includes this block's room.
+        # backward[name] includes only the nodes after it.
+        path_capacity[name] = max(
+            0.0, forward[name] + backward[name]
+        )
 
     return path_capacity
 
 
 def calculate_shaping_increments(
-    blocks,
-    graph,
-    slack,
-    target_blocks,
-    axis,
-    beta=1.0,
+    blocks, graph, slack, target_blocks, axis, beta=1.0
 ):
     """
     Calculate alpha-based shaping increments.
 
-    Horizontal:
-        delta_width = alpha * horizontal_slack
-
-    Vertical:
-        delta_height = beta * alpha * vertical_slack
+    Horizontal: increase width.
+    Vertical: increase height.
     """
-
-    if axis not in ("horizontal", "vertical"):
-        raise ValueError("Axis must be 'horizontal' or 'vertical'.")
 
     if not 0.0 <= beta <= 1.0:
         raise ValueError("Beta must be between 0 and 1.")
 
     path_capacity = calculate_path_capacity(graph, blocks, axis)
-
     increments = {}
 
     for name in target_blocks:
-        if name not in blocks or name not in slack:
-            continue
+        if name not in blocks:
+            raise ValueError(f"Unknown target block: {name}")
 
         block = blocks[name]
 
         if axis == "horizontal":
-            remaining_room = max(0.0, block.max_width - block.width)
+            max_dimension = getattr(
+                block, "effective_max_width", block.max_width
+            )
+            current_dimension = block.width
+
+        elif axis == "vertical":
+            max_dimension = getattr(
+                block, "effective_max_height", block.max_height
+            )
+            current_dimension = block.height
+
         else:
-            remaining_room = max(0.0, block.max_height - block.height)
+            raise ValueError("Axis must be 'horizontal' or 'vertical'.")
 
-        denominator = path_capacity[name]
+        remaining_room = max(
+            0.0, max_dimension - current_dimension
+        )
 
-        if denominator <= 1e-12 or remaining_room <= 1e-12:
+        denominator = path_capacity.get(name, 0.0)
+
+        if denominator <= 1e-12:
             increments[name] = 0.0
             continue
 
         alpha = remaining_room / denominator
-
         delta = alpha * max(0.0, slack[name])
 
         if axis == "vertical":
             delta *= beta
 
-        delta = min(delta, remaining_room)
-
-        increments[name] = max(0.0, delta)
+        increments[name] = min(delta, remaining_room)
 
     return increments
